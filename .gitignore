@@ -109,3 +109,6 @@ xcuserdata/
 # End of https://www.toptal.com/developers/gitignore/api/macos,cmake,c++,xcode,ninja
 
 Toolchains/
+/build_*
+clang_arm64_back
+clang_x86_64_back
