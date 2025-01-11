@@ -19,14 +19,16 @@ InstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault
 mkdir -p llvm-development
 cd llvm-development
 git clone --depth 1 -b 'llvmorg-16.0.0' git@github.com:llvm/llvm-project.git
+```
 
-# 然后参考 PassSkeleton 的目录结构在 llvm-project/llvm/lib/Transforms 下面创建自定义pass 目录
+* 直接集成到llvm源码中开发
+```bash
+# 参考 PassSkeleton 的目录结构在 llvm-project/llvm/lib/Transforms 下面创建自定义pass 目录
 # 然后在 llvm-project/llvm/lib/Transforms/CMakeLists.txt 中追加 add_subdirectory(XXXX)
 # 可以复制 PassSkeleton/CMakeLists.txt 到你的pass 目录中，然后将相关target名称改为你自己的
 ```
 
 * 编写你的pass代码
-
 * 编译
 
 ```bash
@@ -40,12 +42,51 @@ cmake -G Ninja -DLLVM_ENABLE_PROJECTS="llvm" -DCMAKE_BUILD_TYPE=Release -DCMAKE_
 ninja install_LLVMPassSkeletonLoader
 ```
 
+* 在llvm源码外进行开发
+* 首先需要先编译llvm源码
+
+```bash
+# 注入到Xcode 的clang 必须添加次参数 -DLLVM_ABI_BREAKING_CHECKS=FORCE_OFF
+cmake -G Ninja -DLLVM_ENABLE_PROJECTS="llvm" -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=./install -DLLVM_ABI_BREAKING_CHECKS=FORCE_OFF -DLLVM_ENABLE_ZSTD=OFF -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" ../llvm-project/llvm
+
+# 编译pass
+ninja install
+```
+* 创建pass目录
+```bash
+# 参考 PassSkeleton 的目录结构在你自己的目录中创建一致的目录结构
+# 可以复制 PassSkeleton/CMakeLists.txt 到你的pass 目录中，然后将相关target名称改为你自己的
+```
+* 编写你的pass代码
+* 编译
+
+```bash
+# -DBUILD_IN_LLVM_PROJECT=OFF 
+# -DLLVM_DIR=xxx/lib/cmake/llvm
+mkdir build
+cd build
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release  -DLLVM_ABI_BREAKING_CHECKS=FORCE_OFF -DLLVM_ENABLE_ZSTD=OFF -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DCMAKE_INSTALL_PREFIX=./install -DBUILD_IN_LLVM_PROJECT=OFF -DLLVM_DIR=xxx/lib/cmake/llvm xx/PassSkeleton
+```
+
 * 脚本说明
 ```bash
 scripts/inject.sh # 注入Xcode clang 执行后会在当前目录创建 Toolchains 目录
 # 将你的pass libLLVMXXXDeps.dydlib libLLVMXXXLoader.dylib 拷贝到 Toolchains/lib 下面
 # 集成到Xcode中
 sudo scripts/install.sh
+
+# 如果你是使用 cmake -G Xcode 生成的Xcode工程然后编译，则需要执行
+codesign --force --sign - libLLVMXXXDeps.dydlib
+codesign --force --sign - libLLVMXXXLoader.dylib
+
+# 否则会出先运行错误
+Crashed Thread:        0
+
+Exception Type:        EXC_BAD_ACCESS (SIGKILL (Code Signature Invalid))
+Exception Codes:       UNKNOWN_0x32 at 0x0000000107c64000
+Exception Codes:       0x0000000000000032, 0x0000000107c64000
+
+Termination Reason:    Namespace CODESIGNING, Code 2 Invalid Page
 ```
 
 * 测试
@@ -61,7 +102,10 @@ int main() {
 
 * 显示注入成功
 ```
-xcrun --toolchain "KK-Xcode" clang -std=c++17 -stdlib=libc++ -lc++ -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk main.cpp
+xcrun --toolchain "KK-Xcode" \
+clang -std=c++17 -stdlib=libc++ -lc++ \
+-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk \
+main.cpp
 
 Applying Clang hook: /Applications/Xcode.app/Contents/Developer/Toolchains/KK-Xcode.xctoolchain/usr/bin/clang
 buildO0DefaultPipeline: 0x10327cd2c -> 0x10865c6f4
@@ -76,7 +120,11 @@ buildPerModuleDefaultPipeline registerPass
 * 启用pass
 
 ```
-xcrun --toolchain "KK-Xcode" clang -std=c++17 -stdlib=libc++ -lc++ -isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk main.cpp -mllvm -my-pass
+xcrun --toolchain "KK-Xcode" clang \
+-std=c++17 -stdlib=libc++ -lc++ \
+-isysroot /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk \
+-mllvm -my-pass \
+main.cpp 
 
 
 Applying Clang hook: /Applications/Xcode.app/Contents/Developer/Toolchains/KK-Xcode.xctoolchain/usr/bin/clang
@@ -110,7 +158,7 @@ MyPass run func name: _ZSt9terminatev
 ...
 ```
 
-#### Credits
+#### 参考
 * [HikariObfuscator/Hanabi](https://github.com/HikariObfuscator/Hanabi)
 * [iOS LLVM 混淆插件：Hikari 和 Hanabi](https://kanchuan.com/blog/202-llvm-obfuscation)
 * [SsageParuders/SsagePass](https://github.com/SsageParuders/SsagePass)
